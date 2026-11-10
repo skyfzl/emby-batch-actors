@@ -91,9 +91,11 @@ dotnet build -c Release
 
 页面结构（Emby 4.10 要求，2026-11-11 修正）：Emby 把插件页 HTML 注入控制台时行内 `<script>` 不执行，老写法（`data-role="page"` + 行内脚本）会整页空白、页面元素根本不进 DOM。正确写法是 CloudDrive 插件同款：HTML 根元素用 `data-controller="__plugin/batchactorsjs"` 声明控制器，逻辑放在独立的 AMD 模块 `Configuration/batchactors.js` 里，`Plugin.cs` 的 `GetPages` 把 HTML 和 JS 注册成两个页面（JS 那个不进菜单）。改页面只改这两个文件即可，`Plugin.cs` / `csproj` 不用再动。
 
-选片方式：页面顶上有媒体库和文件夹两个下拉框。媒体库（打开页面时从 `ApiClient.getUserViews` 拉取）选了某个库就只加载那个库的电影；文件夹（选库后拉该库下所有文件夹，含子文件夹，`ParentId` 过滤）选了就只加载该文件夹（含子文件夹）里的电影。文件夹没选库时是灰的；切库/切文件夹后自动重载。文件夹显示用“父 / 子”全路径，避免重名分不清。下面那个筛选框是可选的，同时匹配片名和路径。
+选片方式：页面顶上有媒体库下拉框（打开页面时从 `ApiClient.getUserViews` 拉取），下面是文件夹浏览器。文件夹一层一层选：上面是面包屑路径（点哪一级就回到哪一级），下面只列当前文件夹的下一级文件夹；点文件夹名进入下一级，点它旁边的「选择」只加载该文件夹（含子文件夹）里的电影；「选择当前文件夹」加载当前所在的文件夹（在库根时就是整个库）；「全部文件夹」回到整个库。浏览和筛选是分开的——只进去看不会改变列表，点了「选择」才会加载。没选媒体库时文件夹浏览器是灰的。下面那个筛选框是可选的，同时匹配片名和路径。
 
-页面样式（v1.0.3）：用 Emby 控制台原生组件（`emby-input` / `emby-select` / `emby-button` / `emby-checkbox`，`inputContainer` / `fieldDescription` / `sectionTitle`），电影列表每行带封面图（有 `ImageTags.Primary` 就用 `ApiClient.getImageUrl` 取图，没有就显示 🎬 占位），勾选的行高亮。逻辑与之前完全一致。
+页面样式（v1.0.3）：用 Emby 控制台原生组件（`emby-input` / `emby-select` / `emby-button` / `emby-checkbox`，`inputContainer` / `fieldDescription` / `sectionTitle`），电影列表每行带封面图，勾选的行高亮。逻辑与之前完全一致。
+
+海报兜底（v1.0.6）：按 Primary → Thumb → Backdrop 依次找图，哪个有就用哪个；图片地址失效时自动退回「无海报」占位；筛选框输入防抖 150ms，避免每敲一个字母就重建图片。注意：列表初次加载和筛选走的是同一个渲染，筛选后没海报只可能是筛出来的片子本身在 Emby 里就没有图（未识别的片子常见），插件变不出海报，只能显示占位。
 
 ### 安装（Docker，媒体 VPS）
 

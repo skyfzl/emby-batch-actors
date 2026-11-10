@@ -35,12 +35,18 @@ return movies.filter(function (m) {
 return (m.Name || '').toLowerCase().indexOf(q) >= 0 || (m.Path || '').toLowerCase().indexOf(q) >= 0;
 });
 }
+// 海报兜底链：Primary → Thumb → Backdrop，哪个有图用哪个；
+// 图片盖在占位上面，地址失效（onerror）就自动把图片拿掉，露出「无海报」占位，
+// 而不是留一个空白/裂图。未识别的片子在 Emby 里本来就没有海报时，这里也只能显示占位。
 function posterHtml(m) {
-if (m.ImageTags && m.ImageTags.Primary) {
-var url = ApiClient.getImageUrl(m, { type: 'Primary', maxWidth: 96 });
-return '<img src="' + esc(url) + '" style="width:64px;height:96px;object-fit:cover;border-radius:4px;flex-shrink:0" alt="" />';
+var tags = m.ImageTags || {};
+var type = tags.Primary ? 'Primary' : tags.Thumb ? 'Thumb' : tags.Backdrop ? 'Backdrop' : null;
+var inner = '<span style="font-size:11px;color:#888;text-align:center;line-height:1.6">🎬<br/>无海报</span>';
+if (type) {
+var url = ApiClient.getImageUrl(m, { type: type, maxWidth: 96 });
+inner += '<img src="' + esc(url) + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:4px" alt="" onerror="this.remove()" />';
 }
-return '<span style="width:64px;height:96px;background:#2a2a2a;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:26px">🎬</span>';
+return '<span style="position:relative;width:64px;height:96px;background:#2a2a2a;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden">' + inner + '</span>';
 }
 // 代码里改 checked 不会触发 change，emby-checkbox 的外观就不同步；统一走这里
 function setChecked(c, v) {
@@ -144,40 +150,64 @@ if (cur) sel.value = cur;
 }).catch(function () { /* 拉不到就只留“全部媒体库” */ });
 }
 
-// 文件夹下拉框：选了媒体库后，拉它下面所有文件夹（含子文件夹）
-// 显示用“父 / 子”全路径，避免重名文件夹分不清
-function loadFolders(libraryId) {
-var sel = $('baFolder');
-sel.innerHTML = '<option value="">全部文件夹</option>';
-sel.disabled = !libraryId;
-if (!libraryId) return;
-var userId = ApiClient.getCurrentUserId();
-ApiClient.getItems(userId, {
-ParentId: libraryId, IncludeItemTypes: 'Folder', Recursive: true,
-Fields: 'Path', SortBy: 'SortName', SortOrder: 'Ascending', Limit: 1000
+// 文件夹一层一层选：上面是面包屑路径，下面只列当前文件夹的下一级。
+// “浏览”和“筛选”是分开的：点文件夹名只是进去看，点「选择」才把它当作筛选范围。
+var folderStack = []; // [{Id, Name}] 从库根往下
+var selectedFolderId = null, selectedFolderName = '';
+
+function currentParentId() {
+if (folderStack.length) return folderStack[folderStack.length - 1].Id;
+return $('baLibrary').value || null;
+}
+function browseFolders() {
+var libId = $('baLibrary').value;
+var pathEl = $('baFolderPath'), listEl = $('baFolderList');
+$('baSelectCurrentFolder').disabled = !libId;
+$('baClearFolder').disabled = !libId;
+if (!libId) {
+pathEl.textContent = '请先选择媒体库';
+listEl.innerHTML = '';
+return;
+}
+var libName = ($('baLibrary').selectedOptions[0] || {}).textContent || '';
+var crumbs = ['<a href="#" data-depth="-1" style="color:#52b54b">' + esc(libName) + '</a>'];
+folderStack.forEach(function (f, i) {
+crumbs.push('<a href="#" data-depth="' + i + '" style="color:#52b54b">' + esc(f.Name) + '</a>');
+});
+pathEl.innerHTML = crumbs.join(' <span style="color:#666">/</span> ');
+ApiClient.getItems(ApiClient.getCurrentUserId(), {
+ParentId: currentParentId(), IncludeItemTypes: 'Folder', Recursive: false,
+SortBy: 'SortName', SortOrder: 'Ascending', Limit: 1000
 }).then(function (res) {
 var items = res.Items || [];
-var byId = {};
-items.forEach(function (f) { byId[f.Id] = f; });
-function displayPath(f) {
-var parts = [f.Name], cur = f, guard = 0;
-while (cur.ParentId && byId[cur.ParentId] && guard++ < 10) {
-cur = byId[cur.ParentId];
-parts.unshift(cur.Name);
+listEl.innerHTML = items.length ? items.map(function (f) {
+return '<div style="display:flex;align-items:center;gap:8px;padding:5px 0;border-bottom:1px solid #333">' +
+'<a href="#" data-action="enter" data-id="' + esc(f.Id) + '" data-name="' + esc(f.Name) + '" style="flex:1;color:#ddd">📁 ' + esc(f.Name) + '</a>' +
+'<button is="emby-button" type="button" class="raised" data-action="select" data-id="' + esc(f.Id) + '" data-name="' + esc(f.Name) + '" style="min-width:0;padding:2px 10px">选择</button></div>';
+}).join('') : '<span style="color:#888">当前文件夹下没有子文件夹。</span>';
+}).catch(function () { listEl.innerHTML = '<span style="color:#c33">文件夹加载失败。</span>'; });
 }
-return parts.join(' / ');
+// 选定一个文件夹作为筛选范围（递归包含子文件夹里的电影），立即加载
+function selectFolder(id, name) {
+selectedFolderId = id;
+selectedFolderName = name;
+$('baFolderScope').textContent = '当前筛选：' + name;
+log('已选文件夹：' + name);
+loadMovies();
 }
-sel.innerHTML = '<option value="">全部文件夹</option>' + items.map(function (f) {
-return '<option value="' + esc(f.Id) + '">' + esc(displayPath(f)) + '</option>';
-}).join('');
-}).catch(function () { /* 拉不到就只留“全部文件夹” */ });
+function clearFolder() {
+selectedFolderId = null;
+selectedFolderName = '';
+$('baFolderScope').textContent = '';
+log('已回到全部文件夹。');
+loadMovies();
 }
 
 function loadMovies() {
 var userId = ApiClient.getCurrentUserId();
 var libId = $('baLibrary').value;
-var folderId = $('baFolder').value;
-var scopeName = folderId ? ($('baFolder').selectedOptions[0] || {}).textContent :
+var folderId = selectedFolderId;
+var scopeName = folderId ? selectedFolderName :
 libId ? ($('baLibrary').selectedOptions[0] || {}).textContent : '';
 movies = [];
 log('开始加载电影…' + (scopeName ? '（' + scopeName + '）' : '（全部媒体库）'));
@@ -209,17 +239,56 @@ log('加载失败：' + (e && e.message ? e.message : e));
 
 $('baLoad').addEventListener('click', loadMovies);
 $('baLibrary').addEventListener('change', function () {
-// 切库后文件夹重置，先拉新库的文件夹，再按新库加载
-loadFolders($('baLibrary').value);
+// 切库后文件夹浏览回到库根、筛选清空，再按新库加载
+folderStack = [];
+selectedFolderId = null;
+selectedFolderName = '';
+$('baFolderScope').textContent = '';
+browseFolders();
 if (movies.length) loadMovies();
 });
-$('baFolder').addEventListener('change', function () {
-// 切文件夹后自动按新文件夹加载；还没加载过就等点「加载电影」
-if (movies.length) loadMovies();
+// 面包屑：点哪一级就回到哪一级
+$('baFolderPath').addEventListener('click', function (e) {
+var a = e.target && e.target.closest ? e.target.closest('[data-depth]') : null;
+if (!a) return;
+e.preventDefault();
+var depth = parseInt(a.getAttribute('data-depth'), 10);
+folderStack = depth < 0 ? [] : folderStack.slice(0, depth + 1);
+browseFolders();
 });
+// 子文件夹列表：点名字进入下一级，点「选择」把它当作筛选范围
+$('baFolderList').addEventListener('click', function (e) {
+var el = e.target && e.target.closest ? e.target.closest('[data-action]') : null;
+if (!el) return;
+e.preventDefault();
+var id = el.getAttribute('data-id'), name = el.getAttribute('data-name');
+if (el.getAttribute('data-action') === 'enter') {
+folderStack.push({ Id: id, Name: name });
+browseFolders();
+} else {
+var full = folderStack.map(function (f) { return f.Name; }).concat([name]).join(' / ');
+selectFolder(id, full);
+}
+});
+// 「选择当前文件夹」：在库根时就是整个库
+$('baSelectCurrentFolder').addEventListener('click', function () {
+if (folderStack.length) {
+var cur = folderStack[folderStack.length - 1];
+selectFolder(cur.Id, folderStack.map(function (f) { return f.Name; }).join(' / '));
+} else {
+clearFolder();
+}
+});
+$('baClearFolder').addEventListener('click', clearFolder);
 loadLibraries();
+browseFolders();
 
-$('baFilter').addEventListener('input', render);
+// 筛选防抖 150ms：每敲一个字母就重渲染一次，图片会反复重建闪烁
+var filterTimer = null;
+$('baFilter').addEventListener('input', function () {
+if (filterTimer) clearTimeout(filterTimer);
+filterTimer = setTimeout(render, 150);
+});
 // 勾选的行高亮（列表是重新渲染的，所以用事件委托挂在容器上）
 $('baList').addEventListener('change', function (e) {
 var c = e.target && e.target.closest ? e.target.closest('.ba-check') : null;
