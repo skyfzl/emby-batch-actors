@@ -99,6 +99,8 @@ dotnet build -c Release
 
 海报根因（v1.0.7）：`ApiClient.getImageUrl` 第一个参数是 **itemId 字符串**，不是电影对象——v1.0.3–v1.0.6 一直传整个对象，拼出来的地址是 `Items/[object Object]/Images/Primary`，每张图都 404，所以海报一张都出不来。已按 apiclient.js 源码改成 `getImageUrl(m.Id, { type, maxWidth: 96, tag })`，tag 显式从 `ImageTags` 取；Backdrop 的 tag 在 `BackdropImageTags[0]` 且必须传 `index: 0`。加载失败时按 Primary → Thumb → Backdrop 依次换下一张（捕获阶段的 error 监听），都失败才显示「无海报」。
 
+插件图标（v1.0.8）：`plugin/Configuration/thumb.png`（640×360，16:9，深色底 + 胶片条 + 三个演员剪影 + 绿色加号标签），以嵌入资源编进 DLL；`Plugin.cs` 实现 `IHasThumbImage`（`GetThumbImage()` + `ThumbImageFormat => ImageFormat.Png`，对照 CloudDrive 插件的做法），控制台的插件列表里就会显示它，不用额外放文件。
+
 ### 安装（Docker，媒体 VPS）
 
 ```bash

@@ -5,7 +5,7 @@
     <LangVersion>8.0</LangVersion>
     <AssemblyName>Emby.BatchActors</AssemblyName>
     <RootNamespace>Emby.BatchActors</RootNamespace>
-    <Version>1.0.7</Version>
+    <Version>1.0.8</Version>
     <Authors>skyfzl</Authors>
     <Description>批量给多部电影添加演员（Batch Actors）</Description>
     <Nullable>disable</Nullable>
@@ -31,6 +31,7 @@
   <ItemGroup>
     <EmbeddedResource Include="Configuration\batchactors.html" />
     <EmbeddedResource Include="Configuration\batchactors.js" />
+    <EmbeddedResource Include="Configuration\thumb.png" />
   </ItemGroup>
 
 </Project>

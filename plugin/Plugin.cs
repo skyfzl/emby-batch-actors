@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using MediaBrowser.Common.Configuration;
 using MediaBrowser.Common.Plugins;
+using MediaBrowser.Model.Drawing;
 using MediaBrowser.Model.Plugins;
 using MediaBrowser.Model.Serialization;
 
@@ -15,7 +17,7 @@ namespace Emby.BatchActors
     /// 所以不能用老写法（data-role="page" + 行内脚本），必须用 data-controller
     /// 声明一个独立 AMD 模块（见 GetPages 的第二个页面）。
     /// </summary>
-    public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages
+    public class Plugin : BasePlugin<PluginConfiguration>, IHasWebPages, IHasThumbImage
     {
         public Plugin(IApplicationPaths applicationPaths, IXmlSerializer xmlSerializer)
             : base(applicationPaths, xmlSerializer)
@@ -28,6 +30,16 @@ namespace Emby.BatchActors
 
         public override string Description =>
             "在插件页里多选电影，一次给多部电影添加演员 / 类型 / 标签 / 工作室 / 年份（追加或替换，可锁定改动字段防刮削覆盖：演员=Cast，类型=Genres，标签=Tags，工作室=Studios；年份无锁定名）。";
+
+        // 插件列表里的小图：Emby 直接从插件本身读（对照 CloudDrive 插件的做法），
+        // 图片以嵌入资源编进 DLL，不用额外文件。资源名 = 命名空间 + .Configuration.thumb.png。
+        public Stream GetThumbImage()
+        {
+            return GetType().Assembly.GetManifestResourceStream(
+                GetType().Namespace + ".Configuration.thumb.png");
+        }
+
+        public ImageFormat ThumbImageFormat => ImageFormat.Png;
 
         public IEnumerable<PluginPageInfo> GetPages()
         {
