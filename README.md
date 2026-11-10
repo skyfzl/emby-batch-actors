@@ -2,123 +2,16 @@
 
 可以做。结论先说：**插件能实现“多选电影 → 一次加一个/多个演员”，但入口不在 Emby 原生电影列表的多选里**——Emby 插件加不进原生列表菜单，只能在自己的插件页里选片。用法就是：打开插件页 → 勾选多部电影 → 填演员 → 应用。同一套逻辑也支持批量加类型（Genres）、标签（Tags）、工作室（Studios）、年份（ProductionYear + PremiereDate），只填要改的字段，没填的不动。
 
-## 先说清一个边界
-
-这解决不了“识别不出来、刮削不到元数据”本身。TMDB 里没有的片（如 JAV/LTX），刮削永远认不出来，演员只能这样手填。手填后锁定对应字段（演员=Cast，类型=Genres，标签=Tags，工作室=Studios），以后刷新元数据才不会把手填的清掉；海报、简介仍需手动改。
-
-## 两条路（建议先走脚本验证，再装插件）
-
-| | 脚本 `script/batch_add_actors.py` | 插件 `plugin/` |
-|---|---|---|
-| 优点 | 免编译，今晚就能用；逻辑与插件页完全相同 | 在 Emby 网页里点一点就行，不用敲命令 |
-| 缺点 | 每次要敲命令、要 API Key | 要在 Windows 上用 .NET 8 SDK 编译出 DLL，再重启 Emby |
-
-## 路 1：脚本（先用 1 部电影验证）
-
-在 VPS 或 Windows 上，Python 3.8+ 即可，零依赖（只用自带 urllib，不用装 requests；Debian 12/13 默认拦系统级 pip，`pip install requests` 会报 externally-managed-environment，别用 `--break-system-packages`，也别为这个脚本装——如坚持用 requests 版，装 Debian 包 `apt install python3-requests` 即可）。
-
-```bash
-export EMBY_URL="http://10.10.10.4:8096"   # 内网直连，别走公网域名
-export EMBY_API_KEY="你的 API Key"            # 控制台 > 高级 > API Keys 新建，别发到聊天里
-
-# 1. 只预览，不写入
-python3 script/batch_add_actors.py --search SHKD --actors "小凑四叶" --dry-run
-
-# 2. 先拿 1 部验证写入
-python3 script/batch_add_actors.py --search SHKD --actors "小凑四叶" --limit 1 --yes
-
-# 3. 去 Emby 里看那部电影的演员对不对，对了再全量；多个演员用英文逗号
-python3 script/batch_add_actors.py --search SHKD --actors "小凑四叶,希志爱野" --yes
-
-# 一次加演员 + 类型 + 标签 + 工作室（先预览，再拿 1 部验证）
-python3 script/batch_add_actors.py --search SHKD --actors "小凑四叶" \
-    --genres "剧情,爱情" --tags "LTX,破解" --studios "S1" --dry-run
-python3 script/batch_add_actors.py --search SHKD --actors "小凑四叶" \
-    --genres "剧情" --tags "LTX" --studios "S1" --limit 1 --yes
-
-# 只加其中一项也行，不填的字段不动
-python3 script/batch_add_actors.py --search SHKD --tags "收藏" --yes
-
-# 加年份：只给年份时上映日取该年 1 月 1 日；知道准确日期就给 --premiere-date
-python3 script/batch_add_actors.py --search SHKD --year 2024 --dry-run
-python3 script/batch_add_actors.py --search SHKD --year 2024 --limit 1 --yes
-python3 script/batch_add_actors.py --search SHKD --premiere-date 2024-05-01 --limit 1 --yes
-
-# 替换模式（只替换填了的字段；演员只删旧演员，导演/编剧不动）：--mode replace
-# 不锁定改动字段：--no-lock
-# 只补锁定不改内容：--lock-only（不给字段锁 Cast+Genres+Tags+Studios，给了字段只锁给的）
-```
-
-## 路 2：插件
-
-### 编译（GitHub Actions 自动编，不用本地装 SDK）
-
-工作流在 `.github/workflows/build-plugin.yml`：推到 `main`（改了 `plugin/` 时）或在 Actions 页手动 Run，都会用 .NET 8 编出 DLL，产物名 `Emby.BatchActors`。
-
-1. 在 GitHub 上新建空仓库（例如 `skyfzl/emby-batch-actors`，不要勾 README），把本目录推上去：
-
-   ```bash
-   git init -b main
-   git add .
-   git commit -m "Batch Actors plugin + script"
-   git remote add origin git@github.com:skyfzl/emby-batch-actors.git
-   git push -u origin main
-   ```
-
-2. 到仓库的 Actions 页打开 `Build plugin DLL` 那次运行，底部 Artifacts 里下载 `Emby.BatchActors`，解压得到 `Emby.BatchActors.dll`（插件页 HTML 已嵌进 DLL，只需这一个文件）。注意：Artifacts 只在 Actions 运行页面里，不会出现在 Releases。
-3. 以后改了 `plugin/` 再推一次，Actions 会重新编，下载新 DLL 覆盖即可。
-
-### 发版到 Releases（打 tag 才发）
-
-工作流在 `.github/workflows/release-plugin.yml`：推送 `v*` 格式的 tag 时自动编好 DLL 并发到 Releases：
-
-```bash
-git tag v1.0.0
-git push origin v1.0.0
-```
-
-随后在仓库的 Releases 里就能直接下载 `Emby.BatchActors.dll`。不打 tag 只推代码时，只会在 Actions 里留 Artifacts，不会产生 Release。
-
-### 编译（本地，Windows 上做；这台 VM 没有 dotnet，所以 DLL 没在这里编译）
-
-```powershell
-# 装 .NET 8 SDK 后，在 plugin 目录：
-dotnet build -c Release
-# 产物：plugin\bin\Release\netstandard2.0\Emby.BatchActors.dll
-```
-
-引用说明：NuGet 上 `MediaBrowser.Common` 最新稳定版是 4.9.1.90，没有 4.10.2.0 的稳定包；插件只用到 4.9→4.10 未变的 `BasePlugin` / `IHasWebPages`，用 4.9.1.90 编出的 `netstandard2.0` DLL 可在 4.10.2.0 上加载。批量写入逻辑在配置页 JS 里直接调 Emby 自带 REST API，不依赖易变的内部 API。
-
-页面结构（Emby 4.10 要求，2026-11-11 修正）：Emby 把插件页 HTML 注入控制台时行内 `<script>` 不执行，老写法（`data-role="page"` + 行内脚本）会整页空白、页面元素根本不进 DOM。正确写法是 CloudDrive 插件同款：HTML 根元素用 `data-controller="__plugin/batchactorsjs"` 声明控制器，逻辑放在独立的 AMD 模块 `Configuration/batchactors.js` 里，`Plugin.cs` 的 `GetPages` 把 HTML 和 JS 注册成两个页面（JS 那个不进菜单）。改页面只改这两个文件即可，`Plugin.cs` / `csproj` 不用再动。
-
-选片方式：页面顶上有媒体库下拉框（打开页面时从 `ApiClient.getUserViews` 拉取），下面是文件夹浏览器。文件夹一层一层选：上面是面包屑路径（点哪一级就回到哪一级），下面只列当前文件夹的下一级文件夹；点文件夹名进入下一级，点它旁边的「选择」只加载该文件夹（含子文件夹）里的电影；「选择当前文件夹」加载当前所在的文件夹（在库根时就是整个库）；「全部文件夹」回到整个库。浏览和筛选是分开的——只进去看不会改变列表，点了「选择」才会加载。没选媒体库时文件夹浏览器是灰的。下面那个筛选框是可选的，同时匹配片名和路径。
-
-页面样式（v1.0.3）：用 Emby 控制台原生组件（`emby-input` / `emby-select` / `emby-button` / `emby-checkbox`，`inputContainer` / `fieldDescription` / `sectionTitle`），电影列表每行带封面图，勾选的行高亮。逻辑与之前完全一致。
-
-海报兜底（v1.0.6）：按 Primary → Thumb → Backdrop 依次找图，哪个有就用哪个；图片地址失效时自动退回「无海报」占位；筛选框输入防抖 150ms，避免每敲一个字母就重建图片。注意：列表初次加载和筛选走的是同一个渲染，筛选后没海报只可能是筛出来的片子本身在 Emby 里就没有图（未识别的片子常见），插件变不出海报，只能显示占位。
-
-海报根因（v1.0.7）：`ApiClient.getImageUrl` 第一个参数是 **itemId 字符串**，不是电影对象——v1.0.3–v1.0.6 一直传整个对象，拼出来的地址是 `Items/[object Object]/Images/Primary`，每张图都 404，所以海报一张都出不来。已按 apiclient.js 源码改成 `getImageUrl(m.Id, { type, maxWidth: 96, tag })`，tag 显式从 `ImageTags` 取；Backdrop 的 tag 在 `BackdropImageTags[0]` 且必须传 `index: 0`。加载失败时按 Primary → Thumb → Backdrop 依次换下一张（捕获阶段的 error 监听），都失败才显示「无海报」。
-
-插件图标（v1.0.8）：`plugin/Configuration/thumb.png`（640×360，16:9，深色底 + 胶片条 + 三个演员剪影 + 绿色加号标签），以嵌入资源编进 DLL；`Plugin.cs` 实现 `IHasThumbImage`（`GetThumbImage()` + `ThumbImageFormat => ImageFormat.Png`，对照 CloudDrive 插件的做法），控制台的插件列表里就会显示它，不用额外放文件。
-
-### 安装（Docker，媒体 VPS）
-
-```bash
-# 你的 compose 是 /opt/emby/config:/config，所以宿主机插件目录就是：
-cp Emby.BatchActors.dll /opt/emby/config/plugins/
-docker restart emby
-```
-
 ### 使用
 
 控制台 → 插件 → Batch Actors，或直接打开：
 
 ```
-https://emby.tofzl.com/web/index.html#!/configurationpage?name=BatchActors
+http://127.0.0.1:8096/web/index.html#!/configurationpage?name=BatchActors
 ```
 
-1. 点「加载电影」，用筛选框找片（如 `SHKD`），勾选多部；「全选无演员的」可一次挑出没演员的片。
-2. 演员每行一个，可写 `名字|角色`，如 `小凑四叶|主演`；类型、标签、工作室各填一行，用英文逗号分隔；年份填 4 位数字，上映日期可选（有它为准）。
+1. 点「加载电影」，用筛选框找片（如 `AAA`），勾选多部；「全选无演员的」可一次挑出没演员的片。
+2. 演员每行一个，可写 `名字|角色`，如 `刘亦菲|主演`；类型、标签、工作室各填一行，用英文逗号分隔；年份填 4 位数字，上映日期可选（有它为准）。
 3. 先点「预览」核对，再点「应用到选中电影」。默认追加（去重）+ 锁定本次改动的字段。
 
 ## 关键实现点（别踩的坑）
