@@ -65,8 +65,19 @@ python3 script/batch_add_actors.py --search SHKD --premiere-date 2024-05-01 --li
    git push -u origin main
    ```
 
-2. 到仓库的 Actions 页打开 `Build plugin DLL` 那次运行，底部 Artifacts 里下载 `Emby.BatchActors`，解压得到 `Emby.BatchActors.dll`（插件页 HTML 已嵌进 DLL，只需这一个文件）。
+2. 到仓库的 Actions 页打开 `Build plugin DLL` 那次运行，底部 Artifacts 里下载 `Emby.BatchActors`，解压得到 `Emby.BatchActors.dll`（插件页 HTML 已嵌进 DLL，只需这一个文件）。注意：Artifacts 只在 Actions 运行页面里，不会出现在 Releases。
 3. 以后改了 `plugin/` 再推一次，Actions 会重新编，下载新 DLL 覆盖即可。
+
+### 发版到 Releases（打 tag 才发）
+
+工作流在 `.github/workflows/release-plugin.yml`：推送 `v*` 格式的 tag 时自动编好 DLL 并发到 Releases：
+
+```bash
+git tag v1.0.0
+git push origin v1.0.0
+```
+
+随后在仓库的 Releases 里就能直接下载 `Emby.BatchActors.dll`。不打 tag 只推代码时，只会在 Actions 里留 Artifacts，不会产生 Release。
 
 ### 编译（本地，Windows 上做；这台 VM 没有 dotnet，所以 DLL 没在这里编译）
 

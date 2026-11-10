@@ -1,0 +1,27 @@
+name: Release plugin DLL
+
+# 打 tag 推送时发版，例如：
+#   git tag v1.0.0 && git push origin v1.0.0
+# 随后在仓库 Releases 里就能下载到 Emby.BatchActors.dll
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+      - name: Build
+        run: dotnet build plugin/Emby.BatchActors.csproj -c Release
+      - name: Publish release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: plugin/bin/Release/netstandard2.0/Emby.BatchActors.dll
+          generate_release_notes: true
