@@ -1,0 +1,341 @@
+<div data-role="page" class="page type-interior pluginConfigurationPage" id="BatchActorsPage">
+<div data-role="content">
+<div class="content-primary">
+<h2>批量加演员 / 类型 / 标签 / 工作室 / 年份 <span style="font-size:14px;color:#888">Batch Actors · Emby 4.10.2.0</span></h2>
+<p>先在下面勾选多部电影，再填要加的内容，点「应用到选中电影」。只改填了的字段，没填的字段不动；不改标题、简介、海报。</p>
+<p style="color:#c33">注意：这不能让认不出的电影被刮削。TMDB 里没有的片（如 JAV/LTX），演员只能这样手填；勾选「锁定演员（Cast）」可防止以后刷新元数据时把手填的演员清掉。</p>
+
+<h3>1. 电影列表</h3>
+<p>
+<input id="baFilter" type="text" placeholder="按片名 / 路径筛选，如 SHKD" style="width:40%" />
+<button id="baLoad" type="button">加载电影</button>
+<button id="baSelectFiltered" type="button">全选当前筛选</button>
+<button id="baSelectNoActor" type="button">全选无演员的</button>
+<button id="baClear" type="button">清空选择</button>
+<span id="baCount"></span>
+</p>
+<div id="baList" style="max-height:420px;overflow:auto;border:1px solid #444;padding:6px">
+点「加载电影」后列出全部电影（按片名排序）。
+</div>
+
+<h3>2. 要添加的内容（只填要改的，空着不动）</h3>
+<p>演员：每行一个；如需指定角色写 <code>名字|角色</code>，例如 <code>小凑四叶|主演</code>。多个用换行或英文逗号分隔。</p>
+<textarea id="baActors" rows="3" style="width:100%" placeholder="演员A&#10;演员B|主演"></textarea>
+<p>类型（Genres）：<input id="baGenres" type="text" style="width:60%" placeholder="剧情, 爱情" /></p>
+<p>标签（Tags）：<input id="baTags" type="text" style="width:60%" placeholder="LTX, 破解" /></p>
+<p>工作室（Studios）：<input id="baStudios" type="text" style="width:60%" placeholder="S1" /></p>
+<p>年份：<input id="baYear" type="number" min="1900" max="2100" style="width:100px" placeholder="2024" />
+&nbsp;上映日期（可选，有它为准）：<input id="baPremiereDate" type="date" />
+<span style="color:#888">只填年份时上映日取该年 1 月 1 日；注意：年份没有对应的锁定名，锁不住。</span></p>
+<p>
+<label><input id="baAppend" type="radio" name="baMode" value="append" checked /> 追加（保留已有，去重）</label>
+&nbsp;
+<label><input type="radio" name="baMode" value="replace" /> 替换（只替换填了的字段；演员只删旧演员，导演/编剧等不动）</label>
+&nbsp;
+<label><input id="baLock" type="checkbox" checked /> 锁定本次改动的字段（演员=Cast，类型=Genres，标签=Tags，工作室=Studios）</label>
+</p>
+<p>
+<button id="baPreview" type="button">预览（不写入）</button>
+<button id="baApply" type="button" style="font-weight:bold">应用到选中电影</button>
+</p>
+<pre id="baLog" style="white-space:pre-wrap;background:#111;color:#ddd;padding:10px;min-height:120px">日志：</pre>
+</div>
+</div>
+
+<script>
+(function () {
+var movies = []; // {Id, Name, ProductionYear, Path, People:[{Name,Type}]}
+var personCache = {};
+
+function log(msg) {
+var el = document.getElementById('baLog');
+el.textContent += '\n' + msg;
+el.scrollTop = el.scrollHeight;
+}
+function $(id) { return document.getElementById(id);}
+function esc(s) { return String(s == null? '': s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');}
+function actorNames(m) {
+return (m.People || []).filter(function (p) { return p.Type === 'Actor';}).map(function (p) { return p.Name;});
+}
+function filtered() {
+var q = ($('baFilter').value || '').trim().toLowerCase();
+if (!q) return movies;
+return movies.filter(function (m) {
+return (m.Name || '').toLowerCase().indexOf(q) >= 0 || (m.Path || '').toLowerCase().indexOf(q) >= 0;
+});
+}
+function render() {
+var list = filtered();
+var html = list.map(function (m) {
+return '<label style="display:block;padding:3px 0;border-bottom:1px solid #333">' +
+'<input type="checkbox" class="ba-check" value="' + esc(m.Id) + '" /> ' +
+'<b>' + esc(m.Name) + '</b> ' + (m.ProductionYear || '') +
+' <span style="color:#888">演员：' + esc(actorNames(m).join('、') || '（无）') +
+' 类型：' + esc(namesOf(m, 'Genres', 'GenreItems').join('、') || '（无）') +
+' 标签：' + esc(namesOf(m, 'Tags', 'TagItems').join('、') || '（无）') +
+' 工作室：' + esc((m.Studios || []).map(function (s) { return s.Name; }).join('、') || '（无）') + '</span>' +
+'<br/><span style="color:#666;font-size:12px">' + esc(m.Path || '') + '</span></label>';
+}).join('');
+$('baList').innerHTML = html || '没有匹配的电影。';
+$('baCount').textContent = '共 ' + movies.length + ' 部，当前显示 ' + list.length + ' 部';
+}
+
+function parseActors() {
+var raw = $('baActors').value || '';
+var out = [], seen = {};
+raw.split(/[\n,，、；;]+/).forEach(function (part) {
+var t = part.trim();
+if (!t) return;
+var seg = t.split('|'), name = seg[0].trim(), role = (seg[1] || '').trim();
+if (!name || seen[name.toLowerCase()]) return;
+seen[name.toLowerCase()] = true;
+out.push({ Name: name, Type: 'Actor', Role: role || undefined});
+});
+return out;
+}
+
+function parseList(id) {
+  var raw = $(id).value || '';
+  var out = [], seen = {};
+  raw.split(/[\n,，、；;]+/).forEach(function (part) {
+    var t = part.trim();
+    if (!t || seen[t.toLowerCase()]) return;
+    seen[t.toLowerCase()] = true;
+    out.push(t);
+  });
+  return out;
+}
+function mergeStrings(oldArr, add, mode) {
+  if (mode === 'replace') return add.slice();
+  var out = (oldArr || []).slice(), have = {};
+  out.forEach(function (s) { have[s.toLowerCase()] = true; });
+  add.forEach(function (s) { if (!have[s.toLowerCase()]) { out.push(s); have[s.toLowerCase()] = true; } });
+  return out;
+}
+function namesOf(item, listKey, itemsKey) {
+  // 字符串数组与 *Items 并集去重保序：读回的 Tags 常为 None，真实值在 TagItems 里
+  var out = [], seen = {};
+  (item[listKey] || []).forEach(function (n) { if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = true; out.push(n); } });
+  (item[itemsKey] || []).forEach(function (d) { var n = d.Name; if (n && !seen[n.toLowerCase()]) { seen[n.toLowerCase()] = true; out.push(n); } });
+  return out;
+}
+function mergeNamed(oldArr, add, mode) {
+  if (mode === 'replace') return add.slice();
+  var out = (oldArr || []).slice(), have = {};
+  out.forEach(function (d) { have[(d.Name || '').toLowerCase()] = true; });
+  add.forEach(function (d) { if (!have[(d.Name || '').toLowerCase()]) { out.push(d); have[(d.Name || '').toLowerCase()] = true; } });
+  return out;
+}
+
+// 已存在的人物复用其 Id（照片/详情跟着走）；不存在则不带 Id，Emby 会按名字新建人物。
+function resolvePersonId(name) {
+if (personCache[name]) return Promise.resolve(personCache[name]);
+var userId = ApiClient.getCurrentUserId();
+return ApiClient.getItems(userId, {
+IncludeItemTypes: 'Person', SearchTerm: name, Recursive: true, Limit: 5
+}).then(function (res) {
+var hit = (res.Items || []).filter(function (it) { return it.Name === name;})[0] ||
+(res.Items || [])[0] || null;
+personCache[name] = hit? hit.Id: null;
+return personCache[name];
+}).catch(function () { return null;});
+}
+
+$('baLoad').addEventListener('click', function () {
+var userId = ApiClient.getCurrentUserId();
+movies = [];
+log('开始加载电影…');
+var start = 0, limit = 500;
+function page() {
+return ApiClient.getItems(userId, {
+IncludeItemTypes: 'Movie', Recursive: true,
+Fields: 'People,ProviderIds,ProductionYear,Path,Genres,Studios',
+SortBy: 'SortName', SortOrder: 'Ascending',
+StartIndex: start, Limit: limit
+}).then(function (res) {
+movies = movies.concat(res.Items || []);
+start += (res.Items || []).length;
+log('已加载 ' + movies.length + ' / ' + res.TotalRecordCount);
+if (start < res.TotalRecordCount && (res.Items || []).length) return page();
+render();
+log('加载完成，共 ' + movies.length + ' 部电影。');
+});
+}
+page().catch(function (e) { log('加载失败：' + (e && e.message? e.message: e));});
+});
+
+$('baFilter').addEventListener('input', render);
+$('baSelectFiltered').addEventListener('click', function () {
+var ids = {};
+filtered().forEach(function (m) { ids[m.Id] = true;});
+document.querySelectorAll('.ba-check').forEach(function (c) { if (ids[c.value]) c.checked = true;});
+log('已勾选当前筛选的 ' + filtered().length + ' 部。');
+});
+$('baSelectNoActor').addEventListener('click', function () {
+document.querySelectorAll('.ba-check').forEach(function (c) {
+var m = movies.filter(function (x) { return x.Id === c.value;})[0];
+if (m && actorNames(m).length === 0) c.checked = true;
+});
+log('已勾选无演员的电影。');
+});
+$('baClear').addEventListener('click', function () {
+document.querySelectorAll('.ba-check').forEach(function (c) { c.checked = false;});
+});
+
+function selectedMovies() {
+var ids = {};
+document.querySelectorAll('.ba-check:checked').forEach(function (c) { ids[c.value] = true;});
+return movies.filter(function (m) { return ids[m.Id];});
+}
+
+function buildNewPeople(movie, actors, mode) {
+var keep = (movie.People || []).filter(function (p) { return p.Type!== 'Actor';});
+var oldActors = (movie.People || []).filter(function (p) { return p.Type === 'Actor';});
+var merged = mode === 'replace'? []: oldActors.slice();
+var have = {};
+merged.forEach(function (p) { have[p.Name.toLowerCase()] = true;});
+actors.forEach(function (a) {
+if (!have[a.Name.toLowerCase()]) { merged.push(a); have[a.Name.toLowerCase()] = true;}
+});
+return keep.concat(merged);
+}
+
+function parseYear() {
+  var dateVal = ($('baPremiereDate').value || '').trim();
+  var yearVal = ($('baYear').value || '').trim();
+  if (dateVal) {
+    var y = parseInt(dateVal.slice(0, 4), 10);
+    if (yearVal && parseInt(yearVal, 10) !== y) { log('年份与上映日期的年份不一致，请改成一致。'); return 'error'; }
+    return [y, dateVal + 'T00:00:00.0000000Z'];
+  }
+  if (yearVal) {
+    var yy = parseInt(yearVal, 10);
+    if (isNaN(yy) || yy < 1900 || yy > 2100) { log('年份不对：' + yearVal); return 'error'; }
+    return [yy, yy + '-01-01T00:00:00.0000000Z'];
+  }
+  return null;
+}
+
+function summarize(movie, changes, mode) {
+  var parts = [];
+  if (changes.year) parts.push('年份：' + changes.year[0] + '（上映日 ' + changes.year[1].slice(0, 10) + '，原值 ' + (movie.ProductionYear || '（无）') + ' / ' + String(movie.PremiereDate || '').slice(0, 10) + '）');
+  if (changes.actors.length) {
+    var p = buildNewPeople(movie, changes.actors, mode).filter(function (x) { return x.Type === 'Actor'; });
+    parts.push('演员：' + (p.map(function (x) { return x.Name; }).join('、') || '（无）'));
+  }
+  if (changes.genres.length) parts.push('类型：' + (mergeStrings(namesOf(movie, 'Genres', 'GenreItems'), changes.genres, mode).join('、') || '（无）'));
+  if (changes.tags.length) parts.push('标签：' + (mergeStrings(namesOf(movie, 'Tags', 'TagItems'), changes.tags, mode).join('、') || '（无）'));
+  if (changes.studios.length) {
+    var s = mergeNamed(movie.Studios, changes.studios, mode);
+    parts.push('工作室：' + (s.map(function (x) { return x.Name; }).join('、') || '（无）'));
+  }
+  return parts.join('；');
+}
+
+function doApply(dryRun) {
+var yearParsed = parseYear();
+if (yearParsed === 'error') return;
+var changes = {
+  actors: parseActors(),
+  genres: parseList('baGenres'),
+  tags: parseList('baTags'),
+  studios: parseList('baStudios').map(function (n) { return { Name: n }; }),
+  year: yearParsed
+};
+var sel = selectedMovies();
+if (!changes.actors.length && !changes.genres.length && !changes.tags.length && !changes.studios.length && !changes.year) {
+  log('先在第 2 步填至少一项：演员、类型、标签、工作室或年份。'); return;
+}
+if (!sel.length) { log('先在第 1 步勾选至少一部电影。'); return;}
+var mode = document.querySelector('input[name="baMode"]:checked').value;
+var lock = $('baLock').checked;
+var actors = changes.actors;
+log((dryRun ? '【预览】' : '【写入】') + '模式=' + mode + '，' + summarize({ People: [], Genres: [], Tags: [], Studios: [] }, changes, mode) +
+'，电影 ' + sel.length + ' 部，锁定改动字段=' + lock);
+// 先把所有演员的 Person Id 查好，再逐部写
+var chain = Promise.resolve();
+actors.forEach(function (a) {
+chain = chain.then(function () { return resolvePersonId(a.Name).then(function (id) { if (id) a.Id = id;});});
+});
+chain.then(function () {
+var seq = Promise.resolve(), ok = 0, fail = 0;
+sel.forEach(function (movie) {
+seq = seq.then(function () {
+if (dryRun) {
+log('预览 ' + movie.Name + ' -> ' + summarize(movie, changes, mode));
+return;
+}
+var userId = ApiClient.getCurrentUserId();
+// 关键：POST /Items/{Id} 不是增量更新，必须先 GET 全量再回写，否则没传的字段会被清空。
+return ApiClient.getItem(userId, movie.Id).then(function (full) {
+if (changes.actors.length) full.People = buildNewPeople(full, changes.actors, mode);
+if (changes.genres.length) {
+  full.Genres = mergeStrings(namesOf(full, 'Genres', 'GenreItems'), changes.genres, mode);
+  // 关键：Emby 更新时读 GenreItems，忽略 Genres 字符串数组，必须成对发
+  full.GenreItems = mergeNamed(full.GenreItems, changes.genres.map(function (n) { return { Name: n }; }), mode);
+}
+if (changes.tags.length) {
+  full.Tags = mergeStrings(namesOf(full, 'Tags', 'TagItems'), changes.tags, mode);
+  // 同上：Tags 必须和 TagItems 成对发
+  full.TagItems = mergeNamed(full.TagItems, changes.tags.map(function (n) { return { Name: n }; }), mode);
+}
+// Studios 只发 Name，让服务端按名字关联/新建；不要把 /Studios 返回的 GUID 当 Id 发
+if (changes.studios.length) full.Studios = mergeNamed(full.Studios, changes.studios, mode);
+// 年份：ProductionYear 和 PremiereDate 一起写，只发 "2024" 会被静默丢弃；年份没有锁定名
+if (changes.year) { full.ProductionYear = changes.year[0]; full.PremiereDate = changes.year[1]; }
+if (full.ProviderIds == null) full.ProviderIds = {};
+if (lock) {
+full.LockedFields = full.LockedFields || [];
+// 锁定名：演员=Cast，类型=Genres，标签=Tags，工作室=Studios（没有 People）
+var lockMap = { actors: 'Cast', genres: 'Genres', tags: 'Tags', studios: 'Studios' };
+Object.keys(lockMap).forEach(function (k) {
+  if (changes[k].length && full.LockedFields.indexOf(lockMap[k]) < 0) full.LockedFields.push(lockMap[k]);
+});
+// 年份没有锁定名，不加
+}
+return ApiClient.ajax({
+url: ApiClient.getUrl('Items/' + full.Id),
+type: 'POST', data: JSON.stringify(full), contentType: 'application/json'
+});
+}).then(function () {
+ok++;
+log('OK ' + movie.Name + ' -> ' + summarize(movie, changes, mode));
+if (changes.actors.length) movie.People = buildNewPeople(movie, changes.actors, mode);
+if (changes.genres.length) {
+  movie.Genres = mergeStrings(namesOf(movie, 'Genres', 'GenreItems'), changes.genres, mode);
+  movie.GenreItems = mergeNamed(movie.GenreItems, changes.genres.map(function (n) { return { Name: n }; }), mode);
+}
+if (changes.tags.length) {
+  movie.Tags = mergeStrings(namesOf(movie, 'Tags', 'TagItems'), changes.tags, mode);
+  movie.TagItems = mergeNamed(movie.TagItems, changes.tags.map(function (n) { return { Name: n }; }), mode);
+}
+if (changes.studios.length) movie.Studios = mergeNamed(movie.Studios, changes.studios, mode);
+if (changes.year) { movie.ProductionYear = changes.year[0]; movie.PremiereDate = changes.year[1]; }
+}).catch(function (e) {
+fail++;
+log('失败 ' + movie.Name + '：' + (e && e.message? e.message: e));
+});
+});
+});
+return seq.then(function () {
+if (!dryRun) { render(); log('完成：成功 ' + ok + '，失败 ' + fail + '。');}
+else log('预览完成。');
+});
+}).catch(function (e) { log('出错：' + (e && e.message? e.message: e));});
+}
+
+$('baPreview').addEventListener('click', function () { doApply(true);});
+$('baApply').addEventListener('click', function () {
+if (!confirm('确定要给选中的电影写入吗？建议先点「预览」核对。')) return;
+doApply(false);
+});
+
+// 插件配置里的默认值带到页面上
+if (window.ApiClient && ApiClient.getPluginConfiguration) {
+ApiClient.getPluginConfiguration('d45e648c-656d-4382-ab7b-8a919dc4aeed').then(function (cfg) {
+if (cfg && cfg.LockPeopleFieldByDefault === false) $('baLock').checked = false;
+}).catch(function () { /* 用页面默认值即可 */});
+}
+})();
+</script>
+</div>
