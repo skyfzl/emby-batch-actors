@@ -89,6 +89,8 @@ dotnet build -c Release
 
 引用说明：NuGet 上 `MediaBrowser.Common` 最新稳定版是 4.9.1.90，没有 4.10.2.0 的稳定包；插件只用到 4.9→4.10 未变的 `BasePlugin` / `IHasWebPages`，用 4.9.1.90 编出的 `netstandard2.0` DLL 可在 4.10.2.0 上加载。批量写入逻辑在配置页 JS 里直接调 Emby 自带 REST API，不依赖易变的内部 API。
 
+页面结构（Emby 4.10 要求，2026-11-11 修正）：Emby 把插件页 HTML 注入控制台时行内 `<script>` 不执行，老写法（`data-role="page"` + 行内脚本）会整页空白、页面元素根本不进 DOM。正确写法是 CloudDrive 插件同款：HTML 根元素用 `data-controller="__plugin/batchactorsjs"` 声明控制器，逻辑放在独立的 AMD 模块 `Configuration/batchactors.js` 里，`Plugin.cs` 的 `GetPages` 把 HTML 和 JS 注册成两个页面（JS 那个不进菜单）。改页面只改这两个文件即可，`Plugin.cs` / `csproj` 不用再动。
+
 ### 安装（Docker，媒体 VPS）
 
 ```bash

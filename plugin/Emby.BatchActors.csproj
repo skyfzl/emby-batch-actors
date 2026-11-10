@@ -30,6 +30,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Configuration\batchactors.html" />
+    <EmbeddedResource Include="Configuration\batchactors.js" />
   </ItemGroup>
 
 </Project>
