@@ -7,7 +7,7 @@
 * 老写法（data-role="page" + 行内脚本）在 4.10 里页面根本挂不起来、整页空白。
 * （对照：CloudDrive 插件的 embyConfigPage.html / embyConfigPage.js，同一写法。）
 */
-define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-select', 'emby-scroller'], function (BaseView, loading) {
+define(['baseView', 'loading', 'emby-input', 'emby-button', 'emby-select', 'emby-checkbox', 'emby-scroller'], function (BaseView, loading) {
 'use strict';
 
 var pluginId = 'd45e648c-656d-4382-ab7b-8a919dc4aeed';
@@ -35,17 +35,33 @@ return movies.filter(function (m) {
 return (m.Name || '').toLowerCase().indexOf(q) >= 0 || (m.Path || '').toLowerCase().indexOf(q) >= 0;
 });
 }
+function posterHtml(m) {
+if (m.ImageTags && m.ImageTags.Primary) {
+var url = ApiClient.getImageUrl(m, { type: 'Primary', maxWidth: 96 });
+return '<img src="' + esc(url) + '" style="width:64px;height:96px;object-fit:cover;border-radius:4px;flex-shrink:0" alt="" />';
+}
+return '<span style="width:64px;height:96px;background:#2a2a2a;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;font-size:26px">🎬</span>';
+}
+// 代码里改 checked 不会触发 change，emby-checkbox 的外观就不同步；统一走这里
+function setChecked(c, v) {
+if (c.checked !== v) {
+c.checked = v;
+c.dispatchEvent(new Event('change', { bubbles: true }));
+}
+}
 function render() {
 var list = filtered();
 var html = list.map(function (m) {
-return '<label style="display:block;padding:3px 0;border-bottom:1px solid #333">' +
-'<input type="checkbox" class="ba-check" value="' + esc(m.Id) + '" /> ' +
-'<b>' + esc(m.Name) + '</b> ' + (m.ProductionYear || '') +
-' <span style="color:#888">演员：' + esc(actorNames(m).join('、') || '（无）') +
-' 类型：' + esc(namesOf(m, 'Genres', 'GenreItems').join('、') || '（无）') +
-' 标签：' + esc(namesOf(m, 'Tags', 'TagItems').join('、') || '（无）') +
-' 工作室：' + esc((m.Studios || []).map(function (s) { return s.Name;}).join('、') || '（无）') + '</span>' +
-'<br/><span style="color:#666;font-size:12px">' + esc(m.Path || '') + '</span></label>';
+return '<label class="ba-item" style="display:flex;gap:10px;align-items:flex-start;padding:8px 6px;border-bottom:1px solid #333;cursor:pointer;border-radius:4px">' +
+'<input is="emby-checkbox" type="checkbox" class="ba-check" value="' + esc(m.Id) + '" style="margin-top:6px;flex-shrink:0" /> ' +
+posterHtml(m) +
+'<span style="flex:1;min-width:0">' +
+'<span style="font-weight:600">' + esc(m.Name) + '</span> <span style="color:#888">' + (m.ProductionYear || '') + '</span><br/>' +
+'<span style="color:#aaa;font-size:13px">演员：' + esc(actorNames(m).join('、') || '（无）') +
+'　类型：' + esc(namesOf(m, 'Genres', 'GenreItems').join('、') || '（无）') +
+'　标签：' + esc(namesOf(m, 'Tags', 'TagItems').join('、') || '（无）') +
+'　工作室：' + esc((m.Studios || []).map(function (s) { return s.Name; }).join('、') || '（无）') + '</span><br/>' +
+'<span style="color:#666;font-size:12px;word-break:break-all">' + esc(m.Path || '') + '</span></span></label>';
 }).join('');
 $('baList').innerHTML = html || '没有匹配的电影。';
 $('baCount').textContent = '共 ' + movies.length + ' 部，当前显示 ' + list.length + ' 部';
@@ -112,19 +128,71 @@ return personCache[name];
 }).catch(function () { return null;});
 }
 
-$('baLoad').addEventListener('click', function () {
+// 媒体库下拉框：打开页面时拉一次用户媒体库；切库后自动按新库重新加载
+var librariesLoaded = false;
+function loadLibraries() {
+if (librariesLoaded) return;
+librariesLoaded = true;
 var userId = ApiClient.getCurrentUserId();
+ApiClient.getUserViews(userId).then(function (res) {
+var sel = $('baLibrary');
+var cur = sel.value;
+sel.innerHTML = '<option value="">全部媒体库</option>' + (res.Items || []).map(function (v) {
+return '<option value="' + esc(v.Id) + '">' + esc(v.Name) + '</option>';
+}).join('');
+if (cur) sel.value = cur;
+}).catch(function () { /* 拉不到就只留“全部媒体库” */ });
+}
+
+// 文件夹下拉框：选了媒体库后，拉它下面所有文件夹（含子文件夹）
+// 显示用“父 / 子”全路径，避免重名文件夹分不清
+function loadFolders(libraryId) {
+var sel = $('baFolder');
+sel.innerHTML = '<option value="">全部文件夹</option>';
+sel.disabled = !libraryId;
+if (!libraryId) return;
+var userId = ApiClient.getCurrentUserId();
+ApiClient.getItems(userId, {
+ParentId: libraryId, IncludeItemTypes: 'Folder', Recursive: true,
+Fields: 'Path', SortBy: 'SortName', SortOrder: 'Ascending', Limit: 1000
+}).then(function (res) {
+var items = res.Items || [];
+var byId = {};
+items.forEach(function (f) { byId[f.Id] = f; });
+function displayPath(f) {
+var parts = [f.Name], cur = f, guard = 0;
+while (cur.ParentId && byId[cur.ParentId] && guard++ < 10) {
+cur = byId[cur.ParentId];
+parts.unshift(cur.Name);
+}
+return parts.join(' / ');
+}
+sel.innerHTML = '<option value="">全部文件夹</option>' + items.map(function (f) {
+return '<option value="' + esc(f.Id) + '">' + esc(displayPath(f)) + '</option>';
+}).join('');
+}).catch(function () { /* 拉不到就只留“全部文件夹” */ });
+}
+
+function loadMovies() {
+var userId = ApiClient.getCurrentUserId();
+var libId = $('baLibrary').value;
+var folderId = $('baFolder').value;
+var scopeName = folderId ? ($('baFolder').selectedOptions[0] || {}).textContent :
+libId ? ($('baLibrary').selectedOptions[0] || {}).textContent : '';
 movies = [];
-log('开始加载电影…');
+log('开始加载电影…' + (scopeName ? '（' + scopeName + '）' : '（全部媒体库）'));
 loading.show();
 var start = 0, limit = 500;
 function page() {
-return ApiClient.getItems(userId, {
+var query = {
 IncludeItemTypes: 'Movie', Recursive: true,
 Fields: 'People,ProviderIds,ProductionYear,Path,Genres,Studios',
 SortBy: 'SortName', SortOrder: 'Ascending',
 StartIndex: start, Limit: limit
-}).then(function (res) {
+};
+if (folderId) query.ParentId = folderId;
+else if (libId) query.ParentId = libId;
+return ApiClient.getItems(userId, query).then(function (res) {
 movies = movies.concat(res.Items || []);
 start += (res.Items || []).length;
 log('已加载 ' + movies.length + ' / ' + res.TotalRecordCount);
@@ -133,28 +201,47 @@ render();
 log('加载完成，共 ' + movies.length + ' 部电影。');
 });
 }
-page().then(function () { loading.hide();}, function (e) {
+page().then(function () { loading.hide(); }, function (e) {
 loading.hide();
-log('加载失败：' + (e && e.message? e.message: e));
+log('加载失败：' + (e && e.message ? e.message : e));
 });
+}
+
+$('baLoad').addEventListener('click', loadMovies);
+$('baLibrary').addEventListener('change', function () {
+// 切库后文件夹重置，先拉新库的文件夹，再按新库加载
+loadFolders($('baLibrary').value);
+if (movies.length) loadMovies();
 });
+$('baFolder').addEventListener('change', function () {
+// 切文件夹后自动按新文件夹加载；还没加载过就等点「加载电影」
+if (movies.length) loadMovies();
+});
+loadLibraries();
 
 $('baFilter').addEventListener('input', render);
+// 勾选的行高亮（列表是重新渲染的，所以用事件委托挂在容器上）
+$('baList').addEventListener('change', function (e) {
+var c = e.target && e.target.closest ? e.target.closest('.ba-check') : null;
+if (!c) return;
+var row = c.closest('label');
+if (row) row.style.background = c.checked ? 'rgba(82,181,75,0.12)' : '';
+});
 $('baSelectFiltered').addEventListener('click', function () {
 var ids = {};
 filtered().forEach(function (m) { ids[m.Id] = true;});
-view.querySelectorAll('.ba-check').forEach(function (c) { if (ids[c.value]) c.checked = true;});
+view.querySelectorAll('.ba-check').forEach(function (c) { if (ids[c.value]) setChecked(c, true);});
 log('已勾选当前筛选的 ' + filtered().length + ' 部。');
 });
 $('baSelectNoActor').addEventListener('click', function () {
 view.querySelectorAll('.ba-check').forEach(function (c) {
 var m = movies.filter(function (x) { return x.Id === c.value;})[0];
-if (m && actorNames(m).length === 0) c.checked = true;
+if (m && actorNames(m).length === 0) setChecked(c, true);
 });
 log('已勾选无演员的电影。');
 });
 $('baClear').addEventListener('click', function () {
-view.querySelectorAll('.ba-check').forEach(function (c) { c.checked = false;});
+view.querySelectorAll('.ba-check').forEach(function (c) { setChecked(c, false);});
 });
 
 function selectedMovies() {

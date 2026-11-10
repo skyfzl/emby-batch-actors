@@ -2,43 +2,77 @@
      data-horizontal="false" data-forcescrollbar="true" data-centerfocus="true" data-bindheader="true"
      data-title="Batch Actors" data-controller="__plugin/batchactorsjs" id="BatchActorsPage">
 <div class="scrollSlider flex-grow flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page settingsContainer">
-<h2>批量加演员 / 类型 / 标签 / 工作室 / 年份 <span style="font-size:14px;color:#888">Batch Actors · Emby 4.10.2.0 · v1.0.1 (AMD)</span></h2>
+<h2>批量加演员 / 类型 / 标签 / 工作室 / 年份 <span style="font-size:14px;color:#888">Batch Actors · Emby 4.10.2.0 · v1.0.4 (AMD)</span></h2>
 <p>先在下面勾选多部电影，再填要加的内容，点「应用到选中电影」。只改填了的字段，没填的字段不动；不改标题、简介、海报。</p>
 <p style="color:#c33">注意：这不能让认不出的电影被刮削。TMDB 里没有的片（如 JAV/LTX），演员只能这样手填；勾选「锁定演员（Cast）」可防止以后刷新元数据时把手填的演员清掉。</p>
 
-<h3>1. 电影列表</h3>
+<h2 class="sectionTitle">1. 选择电影</h2>
+<div class="inputContainer">
+<select is="emby-select" id="baLibrary" label="媒体库">
+<option value="">全部媒体库</option>
+</select>
+</div>
+<div class="inputContainer">
+<select is="emby-select" id="baFolder" label="文件夹" disabled>
+<option value="">全部文件夹</option>
+</select>
+<div class="fieldDescription">先选媒体库，再选它下面的文件夹；只加载该文件夹（含子文件夹）里的电影。</div>
+</div>
+<div class="inputContainer">
+<input is="emby-input" id="baFilter" type="text" label="筛选" />
+<div class="fieldDescription">按片名或路径筛选，如 SHKD；留空显示全部。</div>
+</div>
 <p>
-<input id="baFilter" type="text" placeholder="按片名 / 路径筛选，如 SHKD" style="width:40%" />
-<button id="baLoad" type="button">加载电影</button>
-<button id="baSelectFiltered" type="button">全选当前筛选</button>
-<button id="baSelectNoActor" type="button">全选无演员的</button>
-<button id="baClear" type="button">清空选择</button>
-<span id="baCount"></span>
+<button is="emby-button" type="button" id="baLoad" class="raised button-submit">加载电影</button>
+<button is="emby-button" type="button" id="baSelectFiltered" class="raised">全选当前筛选</button>
+<button is="emby-button" type="button" id="baSelectNoActor" class="raised">全选无演员的</button>
+<button is="emby-button" type="button" id="baClear" class="raised">清空选择</button>
+<span id="baCount" style="margin-left:8px;color:#888"></span>
 </p>
-<div id="baList" style="max-height:420px;overflow:auto;border:1px solid #444;padding:6px">
+<div id="baList" style="max-height:460px;overflow:auto;border:1px solid #444;border-radius:6px;padding:4px 8px">
 点「加载电影」后列出全部电影（按片名排序）。
 </div>
 
-<h3>2. 要添加的内容（只填要改的，空着不动）</h3>
-<p>演员：每行一个；如需指定角色写 <code>名字|角色</code>，例如 <code>小凑四叶|主演</code>。多个用换行或英文逗号分隔。</p>
-<textarea id="baActors" rows="3" style="width:100%" placeholder="演员A&#10;演员B|主演"></textarea>
-<p>类型（Genres）：<input id="baGenres" type="text" style="width:60%" placeholder="剧情, 爱情" /></p>
-<p>标签（Tags）：<input id="baTags" type="text" style="width:60%" placeholder="LTX, 破解" /></p>
-<p>工作室（Studios）：<input id="baStudios" type="text" style="width:60%" placeholder="S1" /></p>
-<p>年份：<input id="baYear" type="number" min="1900" max="2100" style="width:100px" placeholder="2024" />
-&nbsp;上映日期（可选，有它为准）：<input id="baPremiereDate" type="date" />
-<span style="color:#888">只填年份时上映日取该年 1 月 1 日；注意：年份没有对应的锁定名，锁不住。</span></p>
+<h2 class="sectionTitle">2. 要添加的内容</h2>
+<p style="color:#888">只填要改的，空着不动。</p>
+<div class="inputContainer">
+<label class="inputLabel" for="baActors">演员</label>
+<textarea id="baActors" rows="3" style="width:100%;box-sizing:border-box;padding:8px;background:#1c1c1c;color:#ddd;border:1px solid #444;border-radius:4px" placeholder="演员A&#10;演员B|主演"></textarea>
+<div class="fieldDescription">每行一个；如需指定角色写 <code>名字|角色</code>，例如 <code>小凑四叶|主演</code>。多个用换行或英文逗号分隔。</div>
+</div>
+<div class="inputContainer">
+<input is="emby-input" id="baGenres" type="text" label="类型（Genres）" />
+<div class="fieldDescription">多个用英文逗号分隔，如：剧情, 爱情</div>
+</div>
+<div class="inputContainer">
+<input is="emby-input" id="baTags" type="text" label="标签（Tags）" />
+<div class="fieldDescription">多个用英文逗号分隔，如：LTX, 破解</div>
+</div>
+<div class="inputContainer">
+<input is="emby-input" id="baStudios" type="text" label="工作室（Studios）" />
+<div class="fieldDescription">如：S1</div>
+</div>
+<div class="inputContainer" style="display:flex;gap:16px">
+<div style="flex:1">
+<input is="emby-input" id="baYear" type="number" min="1900" max="2100" label="年份" />
+</div>
+<div style="flex:1">
+<input is="emby-input" id="baPremiereDate" type="date" label="上映日期（可选，有它为准）" />
+</div>
+</div>
+<div class="fieldDescription">只填年份时上映日取该年 1 月 1 日；注意：年份没有对应的锁定名，锁不住。</div>
 <p>
-<label><input id="baAppend" type="radio" name="baMode" value="append" checked /> 追加（保留已有，去重）</label>
-&nbsp;
-<label><input type="radio" name="baMode" value="replace" /> 替换（只替换填了的字段；演员只删旧演员，导演/编剧等不动）</label>
-&nbsp;
-<label><input id="baLock" type="checkbox" checked /> 锁定本次改动的字段（演员=Cast，类型=Genres，标签=Tags，工作室=Studios）</label>
+<label style="margin-right:16px"><input type="radio" name="baMode" value="append" id="baAppend" checked /> 追加（保留已有，去重）</label>
+<label style="margin-right:16px"><input type="radio" name="baMode" value="replace" /> 替换（只替换填了的字段；演员只删旧演员，导演/编剧等不动）</label>
 </p>
 <p>
-<button id="baPreview" type="button">预览（不写入）</button>
-<button id="baApply" type="button" style="font-weight:bold">应用到选中电影</button>
+<label class="checkboxContainer"><input is="emby-checkbox" type="checkbox" id="baLock" checked /><span>锁定本次改动的字段（演员=Cast，类型=Genres，标签=Tags，工作室=Studios）</span></label>
 </p>
-<pre id="baLog" style="white-space:pre-wrap;background:#111;color:#ddd;padding:10px;min-height:120px">日志：</pre>
+<p>
+<button is="emby-button" type="button" id="baPreview" class="raised">预览（不写入）</button>
+<button is="emby-button" type="button" id="baApply" class="raised button-submit" style="font-weight:bold">应用到选中电影</button>
+</p>
+<h2 class="sectionTitle">日志</h2>
+<pre id="baLog" style="white-space:pre-wrap;background:#111;color:#ddd;padding:10px;min-height:120px;border-radius:6px">日志：</pre>
 </div>
 </div>
