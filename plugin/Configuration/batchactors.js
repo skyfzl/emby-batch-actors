@@ -36,15 +36,27 @@ return (m.Name || '').toLowerCase().indexOf(q) >= 0 || (m.Path || '').toLowerCas
 });
 }
 // 海报兜底链：Primary → Thumb → Backdrop，哪个有图用哪个；
-// 图片盖在占位上面，地址失效（onerror）就自动把图片拿掉，露出「无海报」占位，
-// 而不是留一个空白/裂图。未识别的片子在 Emby 里本来就没有海报时，这里也只能显示占位。
+// 图片盖在占位上面，地址失效就按链换下一张，都没了才露出「无海报」占位。
+// 注意（2026-11-11 查 apiclient.js 源码确认）：
+// - ApiClient.getImageUrl 第一个参数是 itemId 字符串，不是电影对象！
+//   传对象会拼出 Items/[object Object]/Images/...，每张图都 404 —— 这就是
+//   v1.0.3–v1.0.6 海报一张都出不来的根因；
+// - tag 不会自己从电影对象里读，必须显式传 options.tag（就是 ImageTags 里的值）；
+// - Backdrop 的 tag 不在 ImageTags 里，在 BackdropImageTags[0]，且必须传 index: 0。
 function posterHtml(m) {
 var tags = m.ImageTags || {};
-var type = tags.Primary ? 'Primary' : tags.Thumb ? 'Thumb' : tags.Backdrop ? 'Backdrop' : null;
+var cands = [];
+if (tags.Primary) cands.push({ type: 'Primary', tag: tags.Primary });
+if (tags.Thumb) cands.push({ type: 'Thumb', tag: tags.Thumb });
+if (m.BackdropImageTags && m.BackdropImageTags.length) cands.push({ type: 'Backdrop', index: 0, tag: m.BackdropImageTags[0] });
 var inner = '<span style="font-size:11px;color:#888;text-align:center;line-height:1.6">🎬<br/>无海报</span>';
-if (type) {
-var url = ApiClient.getImageUrl(m, { type: type, maxWidth: 96 });
-inner += '<img src="' + esc(url) + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:4px" alt="" onerror="this.remove()" />';
+if (cands.length) {
+var first = cands[0];
+var rest = cands.slice(1).map(function (c) { return c.type + '|' + (c.index != null ? c.index : '') + '|' + c.tag; }).join(',');
+var opts = { type: first.type, maxWidth: 96, tag: first.tag };
+if (first.index != null) opts.index = first.index;
+var url = ApiClient.getImageUrl(m.Id, opts);
+inner += '<img src="' + esc(url) + '" data-ba-poster="1" data-ba-id="' + esc(m.Id) + '" data-ba-alt="' + esc(rest) + '" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover;border-radius:4px" alt="" />';
 }
 return '<span style="position:relative;width:64px;height:96px;background:#2a2a2a;border-radius:4px;flex-shrink:0;display:flex;align-items:center;justify-content:center;overflow:hidden">' + inner + '</span>';
 }
@@ -296,6 +308,20 @@ if (!c) return;
 var row = c.closest('label');
 if (row) row.style.background = c.checked ? 'rgba(82,181,75,0.12)' : '';
 });
+// 海报加载失败时按 data-ba-alt 里的链换下一张（Primary → Thumb → Backdrop），
+// 都失败就把 img 拿掉露出「无海报」占位。error 事件不冒泡，所以用捕获阶段监听。
+$('baList').addEventListener('error', function (e) {
+var img = e.target;
+if (!img || img.tagName !== 'IMG' || !img.getAttribute('data-ba-poster')) return;
+var alt = (img.getAttribute('data-ba-alt') || '').split(',').filter(function (s) { return s; });
+var next = alt[0];
+if (!next) { img.remove(); return; }
+var parts = next.split('|');
+var opts = { type: parts[0], maxWidth: 96, tag: parts[2] };
+if (parts[1] !== '') opts.index = parseInt(parts[1], 10);
+img.setAttribute('data-ba-alt', alt.slice(1).join(','));
+img.src = ApiClient.getImageUrl(img.getAttribute('data-ba-id'), opts);
+}, true);
 $('baSelectFiltered').addEventListener('click', function () {
 var ids = {};
 filtered().forEach(function (m) { ids[m.Id] = true;});

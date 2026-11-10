@@ -97,6 +97,8 @@ dotnet build -c Release
 
 海报兜底（v1.0.6）：按 Primary → Thumb → Backdrop 依次找图，哪个有就用哪个；图片地址失效时自动退回「无海报」占位；筛选框输入防抖 150ms，避免每敲一个字母就重建图片。注意：列表初次加载和筛选走的是同一个渲染，筛选后没海报只可能是筛出来的片子本身在 Emby 里就没有图（未识别的片子常见），插件变不出海报，只能显示占位。
 
+海报根因（v1.0.7）：`ApiClient.getImageUrl` 第一个参数是 **itemId 字符串**，不是电影对象——v1.0.3–v1.0.6 一直传整个对象，拼出来的地址是 `Items/[object Object]/Images/Primary`，每张图都 404，所以海报一张都出不来。已按 apiclient.js 源码改成 `getImageUrl(m.Id, { type, maxWidth: 96, tag })`，tag 显式从 `ImageTags` 取；Backdrop 的 tag 在 `BackdropImageTags[0]` 且必须传 `index: 0`。加载失败时按 Primary → Thumb → Backdrop 依次换下一张（捕获阶段的 error 监听），都失败才显示「无海报」。
+
 ### 安装（Docker，媒体 VPS）
 
 ```bash
