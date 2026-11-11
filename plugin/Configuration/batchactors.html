@@ -2,7 +2,7 @@
      data-horizontal="false" data-forcescrollbar="true" data-centerfocus="true" data-bindheader="true"
      data-title="Batch Actors" data-controller="__plugin/batchactorsjs" id="BatchActorsPage">
 <div class="scrollSlider flex-grow flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page settingsContainer">
-<h2>批量加演员 / 类型 / 标签 / 工作室 / 年份 <span style="font-size:14px;color:#888">Batch Actors · Emby 4.10.2.0 · v1.0.9 (AMD)</span></h2>
+<h2>批量加演员 / 类型 / 标签 / 工作室 / 年份 <span style="font-size:14px;color:#888">Batch Actors · Emby 4.10.2.0 · v1.0.10 (AMD)</span></h2>
 <p>先在下面勾选多部电影，再填要加的内容，点「应用到选中电影」。只改填了的字段，没填的字段不动；不改标题、简介、海报。</p>
 <p style="color:#c33">注意：这不能让认不出的电影被刮削。TMDB 里没有的片（如 JAV/LTX），演员只能这样手填；勾选「锁定演员（Cast）」可防止以后刷新元数据时把手填的演员清掉。</p>
 
@@ -28,11 +28,18 @@
 <input is="emby-input" id="baFilter" type="text" label="筛选" />
 <div class="fieldDescription">按片名或路径筛选，如 SHKD；留空显示全部。</div>
 </div>
+<div class="inputContainer">
+<select is="emby-select" id="baMissing" label="缺失筛选">
+<option value="">全部电影</option>
+<option value="noactor">无演员</option>
+<option value="noyear">无年份</option>
+<option value="noactororyear">无演员或无年份</option>
+</select>
+<div class="fieldDescription">只列出缺东西的电影，再手动勾选；和上面的筛选框可以叠加使用。</div>
+</div>
 <p>
 <button is="emby-button" type="button" id="baLoad" class="raised button-submit">加载电影</button>
 <button is="emby-button" type="button" id="baSelectFiltered" class="raised">全选当前筛选</button>
-<button is="emby-button" type="button" id="baSelectNoActor" class="raised">全选无演员的</button>
-<button is="emby-button" type="button" id="baSelectNoYear" class="raised">全选无年份的</button>
 <button is="emby-button" type="button" id="baClear" class="raised">清空选择</button>
 <span id="baCount" style="margin-left:8px;color:#888"></span>
 </p>

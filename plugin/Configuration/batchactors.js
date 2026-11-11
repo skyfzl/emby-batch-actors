@@ -30,9 +30,13 @@ return (m.People || []).filter(function (p) { return p.Type === 'Actor';}).map(f
 }
 function filtered() {
 var q = ($('baFilter').value || '').trim().toLowerCase();
-if (!q) return movies;
+var missing = $('baMissing').value || '';
 return movies.filter(function (m) {
-return (m.Name || '').toLowerCase().indexOf(q) >= 0 || (m.Path || '').toLowerCase().indexOf(q) >= 0;
+if (q && (m.Name || '').toLowerCase().indexOf(q) < 0 && (m.Path || '').toLowerCase().indexOf(q) < 0) return false;
+if (missing === 'noactor' && actorNames(m).length !== 0) return false;
+if (missing === 'noyear' && m.ProductionYear) return false;
+if (missing === 'noactororyear' && actorNames(m).length !== 0 && m.ProductionYear) return false;
+return true;
 });
 }
 // 海报兜底链：Primary → Thumb → Backdrop，哪个有图用哪个；
@@ -301,6 +305,7 @@ $('baFilter').addEventListener('input', function () {
 if (filterTimer) clearTimeout(filterTimer);
 filterTimer = setTimeout(render, 150);
 });
+$('baMissing').addEventListener('change', render);
 // 勾选的行高亮（列表是重新渲染的，所以用事件委托挂在容器上）
 $('baList').addEventListener('change', function (e) {
 var c = e.target && e.target.closest ? e.target.closest('.ba-check') : null;
@@ -327,21 +332,6 @@ var ids = {};
 filtered().forEach(function (m) { ids[m.Id] = true;});
 view.querySelectorAll('.ba-check').forEach(function (c) { if (ids[c.value]) setChecked(c, true);});
 log('已勾选当前筛选的 ' + filtered().length + ' 部。');
-});
-$('baSelectNoActor').addEventListener('click', function () {
-view.querySelectorAll('.ba-check').forEach(function (c) {
-var m = movies.filter(function (x) { return x.Id === c.value;})[0];
-if (m && actorNames(m).length === 0) setChecked(c, true);
-});
-log('已勾选无演员的电影。');
-});
-// 无年份 = ProductionYear 为空（null/undefined/0 都算）；只勾当前显示出来的
-$('baSelectNoYear').addEventListener('click', function () {
-view.querySelectorAll('.ba-check').forEach(function (c) {
-var m = movies.filter(function (x) { return x.Id === c.value;})[0];
-if (m && !m.ProductionYear) setChecked(c, true);
-});
-log('已勾选无年份的电影。');
 });
 $('baClear').addEventListener('click', function () {
 view.querySelectorAll('.ba-check').forEach(function (c) { setChecked(c, false);});
