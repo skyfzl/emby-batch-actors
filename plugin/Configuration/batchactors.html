@@ -2,7 +2,7 @@
      data-horizontal="false" data-forcescrollbar="true" data-centerfocus="true" data-bindheader="true"
      data-title="Batch Actors" data-controller="__plugin/batchactorsjs" id="BatchActorsPage">
 <div class="scrollSlider flex-grow flex-direction-column padded-left padded-left-page padded-right padded-top-page padded-bottom-page settingsContainer">
-<h2>批量加演员 / 类型 / 标签 / 工作室 / 年份 <span style="font-size:14px;color:#888">Batch Actors · Emby 4.10.2.0 · v1.0.10 (AMD)</span></h2>
+<h2>批量加演员 / 类型 / 标签 / 工作室 / 年份 <span style="font-size:14px;color:#888">Batch Actors · Emby 4.10.2.0 · v1.0.12 (AMD)</span></h2>
 <p>先在下面勾选多部电影，再填要加的内容，点「应用到选中电影」。只改填了的字段，没填的字段不动；不改标题、简介、海报。</p>
 <p style="color:#c33">注意：这不能让认不出的电影被刮削。TMDB 里没有的片（如 JAV/LTX），演员只能这样手填；勾选「锁定演员（Cast）」可防止以后刷新元数据时把手填的演员清掉。</p>
 
@@ -68,13 +68,13 @@
 </div>
 <div class="inputContainer" style="display:flex;gap:16px">
 <div style="flex:1">
-<input is="emby-input" id="baYear" type="number" min="1900" max="2100" label="年份" />
+<input is="emby-input" id="baYear" type="number" min="1800" max="3000" label="年份" />
 </div>
 <div style="flex:1">
 <input is="emby-input" id="baPremiereDate" type="date" label="上映日期（可选，有它为准）" />
 </div>
 </div>
-<div class="fieldDescription">只填年份时上映日取该年 1 月 1 日；注意：年份没有对应的锁定名，锁不住。</div>
+<div class="fieldDescription">年份范围 1800–3000；只填年份时上映日取该年 1 月 1 日；注意：年份没有对应的锁定名，锁不住。</div>
 <p>
 <label style="margin-right:16px"><input type="radio" name="baMode" value="append" id="baAppend" checked /> 追加（保留已有，去重）</label>
 <label style="margin-right:16px"><input type="radio" name="baMode" value="replace" /> 替换（只替换填了的字段；演员只删旧演员，导演/编剧等不动）</label>

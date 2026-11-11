@@ -365,7 +365,7 @@ return [y, dateVal + 'T00:00:00.0000000Z'];
 }
 if (yearVal) {
 var yy = parseInt(yearVal, 10);
-if (isNaN(yy) || yy < 1900 || yy > 2100) { log('年份不对：' + yearVal); return 'error';}
+if (isNaN(yy) || yy < 1800 || yy > 3000) { log('年份不对：' + yearVal); return 'error';}
 return [yy, yy + '-01-01T00:00:00.0000000Z'];
 }
 return null;
