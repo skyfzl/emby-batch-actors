@@ -335,6 +335,14 @@ if (m && actorNames(m).length === 0) setChecked(c, true);
 });
 log('已勾选无演员的电影。');
 });
+// 无年份 = ProductionYear 为空（null/undefined/0 都算）；只勾当前显示出来的
+$('baSelectNoYear').addEventListener('click', function () {
+view.querySelectorAll('.ba-check').forEach(function (c) {
+var m = movies.filter(function (x) { return x.Id === c.value;})[0];
+if (m && !m.ProductionYear) setChecked(c, true);
+});
+log('已勾选无年份的电影。');
+});
 $('baClear').addEventListener('click', function () {
 view.querySelectorAll('.ba-check').forEach(function (c) { setChecked(c, false);});
 });
